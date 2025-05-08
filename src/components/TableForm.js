@@ -25,15 +25,25 @@ const TableForm = ({ table, index, formData, setFormData }) => {
     const newWriteMode = e.target.value;
     newReportName[0].tables[index].WriteMode = newWriteMode;
     
-    // Clear PrimaryKey when switching to PARTITION_OVERWRITE
-    if (newWriteMode === 'PARTITION_OVERWRITE') {
-      newReportName[0].tables[index].PrimaryKey = [];
+    // Remove table-level properties as they are managed at query level
+    delete newReportName[0].tables[index].PrimaryKey;
+    delete newReportName[0].tables[index].PartitionColumn;
+    
+    // If switching to non-MERGE mode, keep only the first query
+    if (newWriteMode !== 'MERGE' && newReportName[0].tables[index].query.length > 1) {
+      newReportName[0].tables[index].query = [newReportName[0].tables[index].query[0]];
     }
     
-    // Clear PartitionColumn when switching to MERGE
-    if (newWriteMode === 'MERGE') {
-      newReportName[0].tables[index].PartitionColumn = '';
-    }
+    // Update query-level properties based on write mode
+    newReportName[0].tables[index].query.forEach(query => {
+      if (newWriteMode === 'PARTITION_OVERWRITE') {
+        // Remove PrimaryKey from queries in PARTITION_OVERWRITE mode
+        delete query.PrimaryKey;
+      } else if (newWriteMode === 'MERGE') {
+        // Remove PartitionColumn from queries in MERGE mode
+        delete query.PartitionColumn;
+      }
+    });
     
     setFormData({ ...formData, ReportName: newReportName });
   };
@@ -53,6 +63,13 @@ const TableForm = ({ table, index, formData, setFormData }) => {
   const handleAddQuery = () => {
     const newReportName = [...formData.ReportName];
     const currentQueries = newReportName[0].tables[index].query;
+    const currentWriteMode = newReportName[0].tables[index].WriteMode;
+    
+    // Only allow adding queries if in MERGE mode
+    if (currentWriteMode !== 'MERGE') {
+      alert('Multiple queries are only supported in MERGE mode');
+      return;
+    }
     
     // Find the highest QueryOrder value
     const maxOrder = currentQueries.reduce((max, query) => {
@@ -66,8 +83,7 @@ const TableForm = ({ table, index, formData, setFormData }) => {
       QueryName: '',
       QueryOrder: (maxOrder + 1).toString(),
       QueryFileName: '',
-      PrimaryKey: [],
-      PartitionColumn: ''
+      queryParameter: {}
     };
     
     newReportName[0].tables[index].query.push(newQuery);
@@ -199,7 +215,13 @@ const TableForm = ({ table, index, formData, setFormData }) => {
             />
           ))}
           <div className="text-end">
-            <Button variant="secondary" onClick={handleAddQuery} className="dhl-button">
+            <Button 
+              variant="secondary" 
+              onClick={handleAddQuery} 
+              className="dhl-button"
+              disabled={table.WriteMode !== 'MERGE'}
+              title={table.WriteMode !== 'MERGE' ? 'Multiple queries are only supported in MERGE mode' : ''}
+            >
               Add Query
             </Button>
           </div>
