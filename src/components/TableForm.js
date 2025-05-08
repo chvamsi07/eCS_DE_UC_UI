@@ -7,15 +7,6 @@ const TableForm = ({ table, index, formData, setFormData }) => {
   const writeModes = ['APPEND', 'OVERWRITE', 'MERGE', 'PARTITION_OVERWRITE'];
   const viewTypes = ['materialized', 'standalone'];
   const isViewOptions = ['0', '1'];
-  const [newPrimaryKey, setNewPrimaryKey] = useState('');
-
-  React.useEffect(() => {
-    if (!table.PrimaryKey) {
-      const newReportName = [...formData.ReportName];
-      newReportName[0].tables[index].PrimaryKey = [];
-      setFormData({ ...formData, ReportName: newReportName });
-    }
-  }, []);
 
   const handleTableNameChange = (e) => {
     const newReportName = [...formData.ReportName];
@@ -31,7 +22,19 @@ const TableForm = ({ table, index, formData, setFormData }) => {
 
   const handleWriteModeChange = (e) => {
     const newReportName = [...formData.ReportName];
-    newReportName[0].tables[index].WriteMode = e.target.value;
+    const newWriteMode = e.target.value;
+    newReportName[0].tables[index].WriteMode = newWriteMode;
+    
+    // Clear PrimaryKey when switching to PARTITION_OVERWRITE
+    if (newWriteMode === 'PARTITION_OVERWRITE') {
+      newReportName[0].tables[index].PrimaryKey = [];
+    }
+    
+    // Clear PartitionColumn when switching to MERGE
+    if (newWriteMode === 'MERGE') {
+      newReportName[0].tables[index].PartitionColumn = '';
+    }
+    
     setFormData({ ...formData, ReportName: newReportName });
   };
 
@@ -47,39 +50,27 @@ const TableForm = ({ table, index, formData, setFormData }) => {
     setFormData({ ...formData, ReportName: newReportName });
   };
 
-  const handleAddPrimaryKey = () => {
-    if (newPrimaryKey.trim()) {
-      const newReportName = [...formData.ReportName];
-      if (!Array.isArray(newReportName[0].tables[index].PrimaryKey)) {
-        newReportName[0].tables[index].PrimaryKey = [];
-      }
-      newReportName[0].tables[index].PrimaryKey.push(newPrimaryKey.trim());
-      setFormData({ ...formData, ReportName: newReportName });
-      setNewPrimaryKey('');
-    }
-  };
-
-  const handleRemovePrimaryKey = (keyIndex) => {
-    const newReportName = [...formData.ReportName];
-    newReportName[0].tables[index].PrimaryKey = newReportName[0].tables[index].PrimaryKey.filter((_, i) => i !== keyIndex);
-    setFormData({ ...formData, ReportName: newReportName });
-  };
-
-  const handlePartitionColumnChange = (e) => {
-    const newReportName = [...formData.ReportName];
-    newReportName[0].tables[index].PartitionColumn = e.target.value;
-    setFormData({ ...formData, ReportName: newReportName });
-  };
-
   const handleAddQuery = () => {
     const newReportName = [...formData.ReportName];
-    newReportName[0].tables[index].query.push({
+    const currentQueries = newReportName[0].tables[index].query;
+    
+    // Find the highest QueryOrder value
+    const maxOrder = currentQueries.reduce((max, query) => {
+      const order = parseInt(query.QueryOrder) || 0;
+      return order > max ? order : max;
+    }, 0);
+    
+    // Create new query with next available order number
+    const newQuery = {
       queryType: 'SQL',
       QueryName: '',
-      QueryOrder: '',
+      QueryOrder: (maxOrder + 1).toString(),
       QueryFileName: '',
-      queryParameter: {}
-    });
+      PrimaryKey: [],
+      PartitionColumn: ''
+    };
+    
+    newReportName[0].tables[index].query.push(newQuery);
     setFormData({ ...formData, ReportName: newReportName });
   };
 
@@ -117,6 +108,7 @@ const TableForm = ({ table, index, formData, setFormData }) => {
                 onChange={handleTableNameChange}
                 required
                 className="dhl-select"
+                style={{ height: '34px' }}
               />
             </Form.Group>
           </Col>
@@ -128,6 +120,7 @@ const TableForm = ({ table, index, formData, setFormData }) => {
                 onChange={handleLoadTypeChange}
                 required
                 className="dhl-select"
+                style={{ height: '34px' }}
               >
                 {loadTypes.map(type => (
                   <option key={type} value={type}>{type}</option>
@@ -143,6 +136,7 @@ const TableForm = ({ table, index, formData, setFormData }) => {
                 onChange={handleWriteModeChange}
                 required
                 className="dhl-select"
+                style={{ height: '34px' }}
               >
                 {writeModes.map(mode => (
                   <option key={mode} value={mode}>{mode}</option>
@@ -158,6 +152,7 @@ const TableForm = ({ table, index, formData, setFormData }) => {
                 onChange={handleViewTypeChange}
                 required
                 className="dhl-select"
+                style={{ height: '34px' }}
               >
                 {viewTypes.map(type => (
                   <option key={type} value={type}>{type}</option>
@@ -181,6 +176,7 @@ const TableForm = ({ table, index, formData, setFormData }) => {
                 onChange={handleIsViewChange}
                 required
                 className="dhl-select"
+                style={{ height: '34px' }}
               >
                 {isViewOptions.map(option => (
                   <option key={option} value={option}>{option}</option>
@@ -189,75 +185,6 @@ const TableForm = ({ table, index, formData, setFormData }) => {
             </Form.Group>
           </Col>
         </Row>
-
-        {table.WriteMode === 'MERGE' && (
-          <Row className="mb-3">
-            <Col md={4}>
-              <Form.Group>
-                <Form.Label className="fw-bold">Primary Keys</Form.Label>
-                <div className="d-flex gap-2 mb-2">
-                  <Form.Control
-                    type="text"
-                    value={newPrimaryKey}
-                    onChange={(e) => setNewPrimaryKey(e.target.value)}
-                    placeholder="Enter primary key"
-                    className="dhl-select"
-                    style={{ height: '38px' }}
-                  />
-                  <Button 
-                    variant="secondary" 
-                    onClick={handleAddPrimaryKey}
-                    className="dhl-button"
-                    disabled={!newPrimaryKey.trim()}
-                    style={{ height: '38px' }}
-                  >
-                    Add Key
-                  </Button>
-                </div>
-                {Array.isArray(table.PrimaryKey) && table.PrimaryKey.length > 0 && (
-                  <div className="primary-keys-list">
-                    {table.PrimaryKey.map((key, keyIndex) => (
-                      <div key={keyIndex} className="d-flex align-items-center gap-2 mb-1">
-                        <Form.Control
-                          type="text"
-                          value={key}
-                          disabled
-                          className="dhl-select bg-light"
-                          style={{ height: '38px' }}
-                        />
-                        <Button
-                          variant="link"
-                          className="text-danger p-0"
-                          onClick={() => handleRemovePrimaryKey(keyIndex)}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Form.Group>
-            </Col>
-          </Row>
-        )}
-
-        {table.WriteMode === 'PARTITION_OVERWRITE' && (
-          <Row className="mb-3">
-            <Col md={4}>
-              <Form.Group>
-                <Form.Label className="fw-bold">Partition Column</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={table.PartitionColumn || ''}
-                  onChange={handlePartitionColumnChange}
-                  placeholder="Enter partition column name"
-                  required
-                  className="dhl-select"
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-        )}
 
         <div className="queries-section">
           <h5 className="mb-3">Queries</h5>
